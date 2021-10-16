@@ -1,3 +1,5 @@
+const isReleased = false;
+
 const cors = require('cors');
 const io = require('socket.io')(require('http').createServer(require('express')()).listen(80),{
     cors : {
@@ -13,33 +15,77 @@ let pos = 0; // 라인번호
 
 let freezeTime = 3000;
 let isFreeze = false;
+// 게임 진행 여부
+let isStart = false;
+let seconds = 5; //75
+
 
 const freezeInterval = (time => {
     console.log('freezeInterval', Math.random());
 
+    // 종료
+    if (seconds <= 0) {
+        io.emit('ending', true);
+    }
+
     io.emit('freeze', true);
     setTimeout(() => {
-        io.emit('freeze', false);
+        if (isStart) io.emit('freeze', false);
         setTimeout(freezeInterval, time, time);
-    }, 3000);
+    }, 2000);
+});
+
+const timeInterval = (time => {
+    console.log('timeInterval', seconds);
+
+    if (seconds <= 0) return;
+
+    setTimeout(() => {
+        //io.emit('freeze', false);
+        if (isStart) {
+            seconds--;
+        }
+        io.emit('runtime', seconds);
+        setTimeout(timeInterval, time, time);
+    });
 });
 
 (() => {
-    /*
-    setInterval(() => {
-        console.log('ok');
-    },freezeTime);
-    */
-    freezeInterval(6000);
+    freezeInterval(4000);
+    timeInterval(1000);
 })();
 
 
+/**
+ * uid 없는 소켓은 연결할 수 없다
+ */
+io.use((socket, next) => {
+    if ('uid' in socket.handshake.query) {
+        next();
+    } else {
+        next(new Error('bye'));
+    }
+});
 
 
-
+/**
+ * 같은 이름의 접속자 발생 시 이전 접속자 종료
+ * @param socket
+ */
+const reconnect = socket => {
+    for (let user of usersInfo) {
+        if (user.uid === socket.handshake.query.uid
+                && user.info.connect) {
+            users[user.info.name].disconnect();
+        }
+    }
+};
 
 io.on('connection', socket=>{
 
+    console.log('connection handshake..' , socket.handshake);
+
+    if (isReleased) reconnect(socket);
 
     // 참가자 정보
     socket.handshake.query.info = {
@@ -80,6 +126,13 @@ io.on('connection', socket=>{
         socket.handshake.query.info.die = true;
 
         io.emit('info', usersInfo);
+    });
+    // 게임 진행 여부
+    socket.on('start', data => {
+
+        console.log('start >>> ' , isStart);
+
+        if (data === 'Dan') isStart = !isStart;
     });
     // 참가자 수
     io.emit('users', io.engine.clientsCount);
