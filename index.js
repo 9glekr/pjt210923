@@ -1,4 +1,4 @@
-const isReleased = false;
+const isReleased = true;
 
 const cors = require('cors');
 const io = require('socket.io')(require('http').createServer(require('express')()).listen(80),{
@@ -17,7 +17,9 @@ let freezeTime = 3000;
 let isFreeze = false;
 // 게임 진행 여부
 let isStart = false;
-let seconds = 5; //75
+let seconds = 15; //75
+// 순위
+const ranker = [];
 
 
 const freezeInterval = (time => {
@@ -25,7 +27,8 @@ const freezeInterval = (time => {
 
     // 종료
     if (seconds <= 0) {
-        io.emit('ending', true);
+        io.emit('ending', ranker);
+        return;
     }
 
     io.emit('freeze', true);
@@ -93,7 +96,8 @@ io.on('connection', socket=>{
         name: socket.id,
         index: pos++,
         count: 0,
-        die: false
+        die: false,
+        rank: 0
     }
 
     // 참가자 저장
@@ -105,19 +109,50 @@ io.on('connection', socket=>{
     touchMax = touchMax + 1000;
 
     // 메시지
+    /*
     socket.on('message',data => {
         io.emit('message', data);
         io.emit('touchMax', touchMax);
     });
+     */
     // 터치
     socket.on('touch',data => {
 
-        socket.handshake.query.info.count = socket.handshake.query.info.count + 0.1;
+//        socket.handshake.query.info.count = socket.handshake.query.info.count + 0.1;
+        socket.handshake.query.info.count = socket.handshake.query.info.count + 10;
+        // socket.handshake.query.info.count = socket.handshake.query.info.count + 3;
+
+        // count > 79 = 랭커
+        if (socket.handshake.query.info.count >= 79
+                && ranker.length <= 3) {
+
+            const scInfo = socket.handshake.query;
+            let isNotContain = true;
+            // 중복 방지
+            for (let item of ranker) {
+                if (item.uid === scInfo.uid) {
+                    isNotContain = false;
+                    break;
+                }
+            }
+            if (isNotContain) {
+                socket.handshake.query.info.rank = ranker.length + 1;
+                ranker.push(socket.handshake.query);
+                socket.emit('pass', ranker);
+            }
+
+            // 3명 통과하면 종료
+            if (ranker.length >= 3) {//3
+                seconds = 0;
+                io.emit('ending', ranker);
+            }
+
+        }
 
         io.emit('info', usersInfo);
 
-        touchMax = touchMax - 1;
-        io.emit('touchMax', touchMax);
+        // touchMax = touchMax - 1;
+        // io.emit('touchMax', touchMax);
     });
     // 참가자 탈락
     socket.on('die', data => {
